@@ -41,12 +41,12 @@ const (
 )
 
 type Event struct {
-	Time        time.Time
-	Source      byte
-	Destination byte
-	Register    byte
-	RawValue    byte
-	Value       int16
+	Time        time.Time `json:"time"`
+	Source      byte      `json:"source"`
+	Destination byte      `json:"destination"`
+	Register    byte      `json:"register"`
+	RawValue    byte      `json:"raw"`
+	Value       int16     `json:"value"`
 }
 
 type valloxPackage struct {
