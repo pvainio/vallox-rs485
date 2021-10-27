@@ -99,12 +99,16 @@ func (vallox Vallox) ForMe(e Event) bool {
 	return e.Destination == RemoteClientMulticast || e.Destination == vallox.remoteClientId
 }
 
-func sendInit(vallox *Vallox) {
-	pkg := createQuery(vallox, byte(FanSpeed))
+func (vallox Vallox) Query(register byte) {
+	pkg := createQuery(vallox, register)
 	vallox.out <- *pkg
 }
 
-func createQuery(vallox *Vallox, register byte) *valloxPackage {
+func sendInit(vallox *Vallox) {
+	vallox.Query(FanSpeed)
+}
+
+func createQuery(vallox Vallox, register byte) *valloxPackage {
 	pkg := new(valloxPackage)
 	pkg.System = 1
 	pkg.Source = vallox.remoteClientId
