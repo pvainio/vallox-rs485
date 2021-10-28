@@ -5,7 +5,6 @@
 This module implements Vallox RS485 serial protocol.  Currently it can:
 - read temperature reported by device: outside -> incoming -> inside -> outgoing
 - read ventilation fan speed
-- change ventilation fan speed
 
 ## Supported devices
 
