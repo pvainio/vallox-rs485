@@ -220,6 +220,10 @@ func valueToSpeed(value byte) int8 {
 	return -1
 }
 
+func speedToValue(speed int8) byte {
+	return fanSpeedConversion[speed-1]
+}
+
 func valueToTemp(value byte) int8 {
 	return tempConversion[value]
 }
