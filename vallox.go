@@ -1,4 +1,4 @@
-package vallox
+package valloxrs485
 
 import (
 	"bufio"
@@ -31,9 +31,12 @@ const (
 	RemoteClientMulticast = 0x20
 )
 
+// Some known registers
 const (
+	// Reading and writing fan speed
 	FanSpeed byte = 0x29
 
+	// Registers Vallox is broadcasting temperatures
 	TempIncomingOutside byte = 0x58
 	TempOutgoingInside  byte = 0x5a
 	TempIncomingInside  byte = 0x5b
