@@ -5,17 +5,20 @@
 This module implements Vallox RS485 serial protocol.  Currently it can:
 - read temperature reported by device: outside -> incoming -> inside -> outgoing
 - read ventilation fan speed
+- change ventilation fan speed
 
 ## Supported devices
 
 The module has been tested with only one device so far:
-- Vallox Digit SE model 3500 SE made in 2001
+- Vallox Digit SE model 3500 SE made in 2001 (one with old led panel, no lcd panel)
 
 Probably it will support other Vallox models using RS485 serial bus for remote controllers.  It is possible that some registers have have changed through time since this device register does not match Vallox documentation.
 
-Use at your own risk!  Vallox documentation especially warns that using incorrect registers or incorrect values.
+Use at your own risk!  Vallox documentation warns about using incorrect registers or incorrect values may damage the device.
 
-## Usage 
+## Usage
+
+To write registers (speed) Config.EnableWrite need to be set to true.
 
 ## Example
 

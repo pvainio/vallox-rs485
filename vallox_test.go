@@ -4,6 +4,17 @@ import (
 	"testing"
 )
 
+func TestOutGoingAllowed(t *testing.T) {
+	v := new(Vallox)
+	assertBoolean(true, isOutgoingAllowed(v, 0), t)
+	assertBoolean(false, isOutgoingAllowed(v, FanSpeed), t)
+	assertBoolean(false, isOutgoingAllowed(v, TempIncomingInside), t)
+	v.writeAllowed = true
+	assertBoolean(true, isOutgoingAllowed(v, 0), t)
+	assertBoolean(true, isOutgoingAllowed(v, FanSpeed), t)
+	assertBoolean(false, isOutgoingAllowed(v, TempIncomingInside), t)
+}
+
 func TestValueToTemp(t *testing.T) {
 	assertTemp(0, -74, t)
 	assertTemp(255, 100, t)
@@ -20,6 +31,12 @@ func TestValueToSpeed(t *testing.T) {
 	assertSpeed(63, 6, t)
 	assertSpeed(127, 7, t)
 	assertSpeed(255, 8, t)
+}
+
+func assertBoolean(expected bool, value bool, t *testing.T) {
+	if expected != value {
+		t.Errorf("exptected %v got %v", expected, value)
+	}
 }
 
 func assertTemp(raw byte, value int8, t *testing.T) {

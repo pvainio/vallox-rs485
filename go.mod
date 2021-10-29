@@ -1,4 +1,4 @@
-module github.com/pvainio/vallox
+module github.com/pvainio/vallox-rs485
 
 go 1.17
 

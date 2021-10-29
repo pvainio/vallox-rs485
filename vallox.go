@@ -1,3 +1,4 @@
+// Package valloxrs485 implements Vallox RS485 protocol
 package valloxrs485
 
 import (
@@ -6,14 +7,23 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"time"
 
 	"github.com/tarm/serial"
 )
 
+// Config foo
 type Config struct {
-	Device         string
+	// Device file for rs485 device
+	Device string
+	// RemoteClientId is the id for this device in Vallox rs485 bus
 	RemoteClientId byte
+	// Enable writing to Vallox regisers, default false
+	EnableWrite bool
+	// Logge for debug, default no logging
+	LogDebug *log.Logger
 }
 
 type Vallox struct {
@@ -24,10 +34,13 @@ type Vallox struct {
 	in             chan Event
 	out            chan valloxPackage
 	lastActivity   time.Time
+	writeAllowed   bool
+	logDebug       *log.Logger
 }
 
 const (
 	DeviceMulticast       = 0x10
+	DeviceMain            = 0x11
 	RemoteClientMulticast = 0x20
 )
 
@@ -61,7 +74,15 @@ type valloxPackage struct {
 	Checksum    byte
 }
 
+var writeAllowed = map[byte]bool{FanSpeed: true}
+
+// Open opens the rs485 device specified in Config
 func Open(cfg Config) (*Vallox, error) {
+
+	if cfg.LogDebug == nil {
+		cfg.LogDebug = log.New(ioutil.Discard, "", 0)
+	}
+
 	if cfg.RemoteClientId == 0 {
 		cfg.RemoteClientId = 0x27
 	}
@@ -84,6 +105,8 @@ func Open(cfg Config) (*Vallox, error) {
 		remoteClientId: cfg.RemoteClientId,
 		in:             make(chan Event, 15),
 		out:            make(chan valloxPackage, 15),
+		writeAllowed:   cfg.EnableWrite,
+		logDebug:       cfg.LogDebug,
 	}
 
 	sendInit(vallox)
@@ -94,30 +117,56 @@ func Open(cfg Config) (*Vallox, error) {
 	return vallox, nil
 }
 
+// Events returns channel for events from Vallox bus
 func (vallox Vallox) Events() chan Event {
 	return vallox.in
 }
 
+// ForMe returns true if event is addressed for this client
 func (vallox Vallox) ForMe(e Event) bool {
 	return e.Destination == RemoteClientMulticast || e.Destination == vallox.remoteClientId
 }
 
+// Query queries Vallox for register
 func (vallox Vallox) Query(register byte) {
 	pkg := createQuery(vallox, register)
 	vallox.out <- *pkg
+}
+
+// SetSpeed changes speed of ventilation fan
+func (vallox Vallox) SetSpeed(speed byte) {
+	if speed < 1 || speed > 8 {
+		vallox.logDebug.Printf("received invalid speed %x", speed)
+		return
+	}
+	value := speedToValue(int8(speed))
+	vallox.logDebug.Printf("received set speed %x", speed)
+	// Send value to the main vallox device
+	vallox.writeRegister(DeviceMain, FanSpeed, value)
+	// Also publish value to all the remotes
+	vallox.writeRegister(RemoteClientMulticast, FanSpeed, value)
 }
 
 func sendInit(vallox *Vallox) {
 	vallox.Query(FanSpeed)
 }
 
+func (vallox Vallox) writeRegister(destination byte, register byte, value byte) {
+	pkg := createWrite(vallox, destination, register, value)
+	vallox.out <- *pkg
+}
+
 func createQuery(vallox Vallox, register byte) *valloxPackage {
+	return createWrite(vallox, DeviceMain, 0, register)
+}
+
+func createWrite(vallox Vallox, destination byte, register byte, value byte) *valloxPackage {
 	pkg := new(valloxPackage)
 	pkg.System = 1
 	pkg.Source = vallox.remoteClientId
-	pkg.Destination = 0x11
-	pkg.Register = 0
-	pkg.Value = register
+	pkg.Destination = destination
+	pkg.Register = register
+	pkg.Value = value
 	pkg.Checksum = calculateChecksum(pkg)
 	return pkg
 }
@@ -125,15 +174,37 @@ func createQuery(vallox Vallox, register byte) *valloxPackage {
 func handleOutgoing(vallox *Vallox) {
 	for vallox.running {
 		pkg := <-vallox.out
+
+		if !isOutgoingAllowed(vallox, pkg.Register) {
+			vallox.logDebug.Printf("outgoing not allowed for %x = %x", pkg.Register, pkg.Value)
+			continue
+		}
+
 		now := time.Now()
-		if vallox.lastActivity.IsZero() || now.UnixMilli()-vallox.lastActivity.UnixMilli() < 100 {
-			time.Sleep(time.Millisecond * 100)
+		if vallox.lastActivity.IsZero() || now.UnixMilli()-vallox.lastActivity.UnixMilli() < 50 {
+			vallox.logDebug.Printf("delay outgoing to %x %x = %x, lastActivity %v now %v, diff %d ms",
+				pkg.Destination, pkg.Register, pkg.Value, vallox.lastActivity, now, now.UnixMilli()-vallox.lastActivity.UnixMilli())
+			time.Sleep(time.Millisecond * 50)
 			vallox.out <- pkg
 		} else {
 			updateLastActivity(vallox)
 			binary.Write(vallox.port, binary.BigEndian, pkg)
+			vallox.logDebug.Printf("sent outgoing to %x %x = %x", pkg.Destination, pkg.Register, pkg.Value)
 		}
 	}
+}
+
+func isOutgoingAllowed(vallox *Vallox, register byte) bool {
+	if register == 0 {
+		// queries are allowed
+		return true
+	}
+
+	if !vallox.writeAllowed {
+		return false
+	}
+
+	return writeAllowed[register]
 }
 
 func handleIncoming(vallox *Vallox) {
