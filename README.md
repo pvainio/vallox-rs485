@@ -7,6 +7,8 @@ This module implements Vallox RS485 serial protocol.  Currently it can:
 - read ventilation fan speed
 - change ventilation fan speed
 
+Made for https://github.com/pvainio/vallox-mqtt Vallox RS485 MQTT gateway for Home Assistant integration
+
 ## Supported devices
 
 The module has been tested with only one device so far:
