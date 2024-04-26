@@ -54,6 +54,12 @@ const (
 	TempOutgoingInside  byte = 0x5a
 	TempIncomingInside  byte = 0x5b
 	TempOutgoingOutside byte = 0x5c
+
+	// Registers for newer protocol
+	TempIncomingOutsideNew byte = 0x32
+	TempOutgoingInsideNew  byte = 0x34
+	TempIncomingInsideNew  byte = 0x35
+	TempOutgoingOutsideNew byte = 0x33
 )
 
 type Event struct {
@@ -103,8 +109,8 @@ func Open(cfg Config) (*Vallox, error) {
 		running:        true,
 		buffer:         bufio.NewReadWriter(bufio.NewReader(buffer), bufio.NewWriter(buffer)),
 		remoteClientId: cfg.RemoteClientId,
-		in:             make(chan Event, 15),
-		out:            make(chan valloxPackage, 15),
+		in:             make(chan Event, 50),
+		out:            make(chan valloxPackage, 50),
 		writeAllowed:   cfg.EnableWrite,
 		logDebug:       cfg.LogDebug,
 	}
@@ -182,6 +188,7 @@ func handleOutgoing(vallox *Vallox) {
 
 		now := time.Now()
 		if vallox.lastActivity.IsZero() || now.UnixMilli()-vallox.lastActivity.UnixMilli() < 50 {
+			updateLastActivity(vallox)
 			vallox.logDebug.Printf("delay outgoing to %x %x = %x, lastActivity %v now %v, diff %d ms",
 				pkg.Destination, pkg.Register, pkg.Value, vallox.lastActivity, now, now.UnixMilli()-vallox.lastActivity.UnixMilli())
 			time.Sleep(time.Millisecond * 50)
@@ -255,28 +262,34 @@ func handleBuffer(vallox *Vallox) {
 }
 
 func handlePackage(pkg *valloxPackage, vallox *Vallox) {
-	vallox.in <- *event(pkg, vallox)
+	vallox.in <- *event(pkg)
 }
 
-func event(pkg *valloxPackage, vallox *Vallox) *Event {
+type mapFn func(byte) int8
+
+var registerMap = map[byte]mapFn{
+	FanSpeed:               valueToSpeed,
+	TempIncomingInside:     valueToTemp,
+	TempIncomingOutside:    valueToTemp,
+	TempOutgoingInside:     valueToTemp,
+	TempOutgoingOutside:    valueToTemp,
+	TempIncomingInsideNew:  valueToTemp,
+	TempIncomingOutsideNew: valueToTemp,
+	TempOutgoingInsideNew:  valueToTemp,
+	TempOutgoingOutsideNew: valueToTemp,
+}
+
+func event(pkg *valloxPackage) *Event {
 	event := new(Event)
 	event.Time = time.Now()
 	event.Source = pkg.Source
 	event.Destination = pkg.Destination
 	event.Register = pkg.Register
 	event.RawValue = pkg.Value
-	switch pkg.Register {
-	case FanSpeed:
-		event.Value = int16(valueToSpeed(pkg.Value))
-	case TempIncomingInside:
-		event.Value = int16(valueToTemp(pkg.Value))
-	case TempIncomingOutside:
-		event.Value = int16(valueToTemp(pkg.Value))
-	case TempOutgoingInside:
-		event.Value = int16(valueToTemp(pkg.Value))
-	case TempOutgoingOutside:
-		event.Value = int16(valueToTemp(pkg.Value))
-	default:
+	mapFn, ok := registerMap[pkg.Register]
+	if ok {
+		event.Value = int16(mapFn(pkg.Value))
+	} else {
 		event.Value = int16(pkg.Value)
 	}
 	return event
