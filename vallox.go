@@ -60,6 +60,12 @@ const (
 	TempOutgoingInsideNew  byte = 0x34
 	TempIncomingInsideNew  byte = 0x35
 	TempOutgoingOutsideNew byte = 0x33
+
+	RhHighest          byte = 0x2a
+	Co2HighestHighByte byte = 0x2b
+	Co2HighestLowBte   byte = 0x2c
+	Rh1                byte = 0x2f
+	Rh2                byte = 0x30
 )
 
 type Event struct {
