@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math"
 	"time"
 
 	"github.com/tarm/serial"
@@ -36,6 +37,34 @@ type Vallox struct {
 	lastActivity   time.Time
 	writeAllowed   bool
 	logDebug       *log.Logger
+
+	co2 twoByteValue
+}
+
+type twoByteValue struct {
+	high byteValue
+	low  byteValue
+}
+
+func (tbv *twoByteValue) validValue(now time.Time) (int16, bool) {
+	limit := now.Add(-500 * time.Millisecond)
+	if tbv.high.at.Before(limit) {
+		return -1, false
+	}
+	if tbv.low.at.Before(limit) {
+		return -1, false
+	}
+	// Both values are within 500ms of the current time
+	res := int16(tbv.high.value)<<8 + int16(tbv.low.value)
+	if res <= 0 {
+		return -1, false
+	}
+	return res, true
+}
+
+type byteValue struct {
+	at    time.Time
+	value byte
 }
 
 const (
@@ -63,7 +92,7 @@ const (
 
 	RhHighest          byte = 0x2a
 	Co2HighestHighByte byte = 0x2b
-	Co2HighestLowBte   byte = 0x2c
+	Co2HighestLowByte  byte = 0x2c
 	Rh1                byte = 0x2f
 	Rh2                byte = 0x30
 )
@@ -268,10 +297,15 @@ func handleBuffer(vallox *Vallox) {
 }
 
 func handlePackage(pkg *valloxPackage, vallox *Vallox) {
-	vallox.in <- *event(pkg)
+	e := event(pkg, vallox)
+	if e != nil {
+		vallox.in <- *e
+	} else {
+		vallox.logDebug.Printf("discarding package from %d register %d value %d", pkg.Source, pkg.Register, pkg.Value)
+	}
 }
 
-type mapFn func(byte) int8
+type mapFn func(byte, *Vallox) (int16, bool)
 
 var registerMap = map[byte]mapFn{
 	FanSpeed:               valueToSpeed,
@@ -283,39 +317,68 @@ var registerMap = map[byte]mapFn{
 	TempIncomingOutsideNew: valueToTemp,
 	TempOutgoingInsideNew:  valueToTemp,
 	TempOutgoingOutsideNew: valueToTemp,
+
+	RhHighest:          valueToRh,
+	Rh1:                valueToRh,
+	Rh2:                valueToRh,
+	Co2HighestHighByte: valueToCo2High,
+	Co2HighestLowByte:  valueToCo2Low,
 }
 
-func event(pkg *valloxPackage) *Event {
+func valueToRh(val byte, vallox *Vallox) (int16, bool) {
+	if val < 0x33 {
+		return -1, false
+	}
+	return int16(math.Round(float64((float32(val) - 51.0) / 2.04))), true
+}
+
+func valueToCo2High(val byte, vallox *Vallox) (int16, bool) {
+	now := time.Now()
+	vallox.co2.high = byteValue{at: now, value: val}
+	return vallox.co2.validValue(now)
+}
+
+func valueToCo2Low(val byte, vallox *Vallox) (int16, bool) {
+	now := time.Now()
+	vallox.co2.low = byteValue{at: now, value: val}
+	return vallox.co2.validValue(now)
+}
+
+func event(pkg *valloxPackage, vallox *Vallox) *Event {
 	event := new(Event)
 	event.Time = time.Now()
 	event.Source = pkg.Source
 	event.Destination = pkg.Destination
 	event.Register = pkg.Register
 	event.RawValue = pkg.Value
-	mapFn, ok := registerMap[pkg.Register]
-	if ok {
-		event.Value = int16(mapFn(pkg.Value))
+	mapFn, found := registerMap[pkg.Register]
+	if found {
+		val, ok := mapFn(pkg.Value, vallox)
+		if !ok {
+			return nil
+		}
+		event.Value = int16(val)
 	} else {
 		event.Value = int16(pkg.Value)
 	}
 	return event
 }
 
-func valueToSpeed(value byte) int8 {
+func valueToSpeed(value byte, vallox *Vallox) (int16, bool) {
 	for i, v := range fanSpeedConversion {
 		if value == v {
-			return int8(i) + 1
+			return int16(i) + 1, true
 		}
 	}
-	return -1
+	return -1, false
 }
 
 func speedToValue(speed int8) byte {
 	return fanSpeedConversion[speed-1]
 }
 
-func valueToTemp(value byte) int8 {
-	return tempConversion[value]
+func valueToTemp(value byte, vallox *Vallox) (int16, bool) {
+	return tempConversion[value], true
 }
 
 func validPackage(buffer []byte) (pkg *valloxPackage) {
@@ -339,7 +402,7 @@ func calculateChecksum(pkg *valloxPackage) byte {
 
 var fanSpeedConversion = [8]byte{0x01, 0x03, 0x07, 0x0f, 0x1f, 0x3f, 0x7f, 0xff}
 
-var tempConversion = [256]int8{
+var tempConversion = [256]int16{
 	-74, -70, -66, -62, -59, -56, -54, -52, -50, -48, -47, -46, -44, -43, -42, -41,
 	-40, -39, -38, -37, -36, -35, -34, -33, -33, -32, -31, -30, -30, -29, -28, -28, -27, -27, -26, -25, -25,
 	-24, -24, -23, -23, -22, -22, -21, -21, -20, -20, -19, -19, -19, -18, -18, -17, -17, -16, -16, -16, -15,
