@@ -214,23 +214,18 @@ func createWrite(vallox *Vallox, destination byte, register byte, value byte) *v
 }
 
 func (vallox *Vallox) ifBusFreeProceed() bool {
-	//vallox.logDebug.Printf("if free proceed")
 	vallox.mutex.Lock()
 	defer vallox.mutex.Unlock()
 	if time.Since(vallox.lastActivity) < 100*time.Millisecond {
-		//vallox.logDebug.Printf("not free, no proceed")
 		return false
 	}
 	vallox.lastActivity = time.Now()
-	//vallox.logDebug.Printf("free proceed")
 	return true
 }
 
 func (vallox *Vallox) getLastActivity() time.Time {
-	//vallox.logDebug.Printf("get last activity")
 	vallox.mutex.Lock()
 	defer vallox.mutex.Unlock()
-	//vallox.logDebug.Printf("got last activity")
 	return vallox.lastActivity
 }
 
@@ -280,7 +275,6 @@ func handleIncoming(vallox *Vallox) {
 			return
 		}
 		if n > 0 {
-			//vallox.logDebug.Printf("read %d bytes", n)
 			vallox.updateLastActivity()
 			vallox.buf.Write(buf[:n])
 			handleBuffer(vallox)
@@ -289,11 +283,9 @@ func handleIncoming(vallox *Vallox) {
 }
 
 func (vallox *Vallox) updateLastActivity() {
-	//vallox.logDebug.Printf("updating last activity")
 	vallox.mutex.Lock()
 	defer vallox.mutex.Unlock()
 	vallox.lastActivity = time.Now()
-	//vallox.logDebug.Printf("updated last activity")
 }
 
 func fatalError(err error, vallox *Vallox) {
@@ -311,7 +303,6 @@ func handleBuffer(vallox *Vallox) {
 		} else {
 			// discard byte, since no valid package starts here
 			vallox.buf.ReadByte()
-			//vallox.logDebug.Printf("invalid package, discarding byte %x, available %d", b, vallox.buf.Len())
 		}
 	}
 }
